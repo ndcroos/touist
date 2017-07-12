@@ -104,6 +104,7 @@ module rec Ast : sig
     | For              of ast * ast * ast
     | NewlineAfter     of ast
     | NewlineBefore    of ast
+    | Formula          of ast
 end = Ast (* see (1) *)
 
 (* From the type [Ast], we create an ordered type [AstOrdered] in order to be able
@@ -115,6 +116,7 @@ and AstOrdered : Set.OrderedType = struct
       | Int x, Int y -> Pervasives.compare x y
       | Float x, Float y -> Pervasives.compare x y
       | Prop x, Prop y -> Pervasives.compare x y
+      | Formula x, Formula y -> 1 (* We cannot compare formulas so we consider them different *)
       | Set x, Set y -> Pervasives.compare x y
       | _ -> failwith "cannot compare"
       let of_list =

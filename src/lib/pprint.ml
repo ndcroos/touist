@@ -110,6 +110,7 @@ let rec string_of_ast ?(utf8=false) ?(show_var=(fun ast -> "")) ?(debug=false) ?
   | Forall (v,f)             -> "forall "^ of_ast v ^": "^ of_ast f
   | For (v,c,f)           -> "for "^of_ast v^" in "^of_ast c^":"^ of_ast f
   | NewlineBefore f | NewlineAfter f -> of_ast f
+  | Formula f -> of_ast f
 
 and string_of_ast_type ?(debug=false) (ast:ast) : string =
   let of_ast_type ast = string_of_ast_type ~debug ast in
@@ -173,6 +174,7 @@ and string_of_ast_type ?(debug=false) (ast:ast) : string =
   | Forall (v,f)           -> "forall"
   | For (_,_,_)            -> "for"
   | NewlineBefore f | NewlineAfter f -> "newline"
+  | Formula f              -> "formula"
 
 
 and string_of_ast_list ?(utf8=false) ?(show_var=(fun ast -> "")) ?(debug=false) ?(parenthesis=debug) sep el =

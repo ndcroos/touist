@@ -146,12 +146,16 @@ let rec eval ?smt:(smt_mode=false) ?(onlychecktypes=false) (ast,msgs) :ast * Msg
   eval_touist_code msgs [] ast, msgs
 
 and eval_touist_code msgs (env:env) ast :ast =
-  
+
   let rec affect_vars = function
     | [] -> []
-    | Loc (Affect (Loc (Var (p,i),var_loc),y),affect_loc)::xs ->
-      Hashtbl.replace !extenv (expand_var_name msgs env (p,i)) (eval_ast msgs env y, var_loc);
-        affect_vars xs
+    | Loc (Affect (Loc (Var (p,i),var_loc),content),affect_loc)::xs ->
+      begin match content with
+        | Formula f -> Hashtbl.replace !extenv (expand_var_name msgs env (p,i)) (eval_formula_set_decl msgs env f, var_loc);
+          affect_vars xs
+        | _ -> Hashtbl.replace !extenv (expand_var_name msgs env (p,i)) (eval_ast msgs env content, var_loc);
+          affect_vars xs
+      end
     | x::xs -> x::(affect_vars xs)
   in
   let rec process_formulas = function
@@ -169,7 +173,7 @@ and eval_touist_code msgs (env:env) ast :ast =
    the boolean values must be computed: eval_ast will do exactly that.*)
 and eval_ast (msgs:Msgs.t ref) (env:env) (ast:ast) :ast =
   let eval_ast = eval_ast msgs env in
-  let expanded = match ast_whithout_loc ast with
+  match ast_whithout_loc ast with
   | Int x   -> Int x
   | Float x -> Float x
   | Bool x  -> Bool x
@@ -344,8 +348,8 @@ and eval_ast (msgs:Msgs.t ref) (env:env) (ast:ast) :ast =
   | Prop x -> Prop x
   | Loc (x,l) -> eval_ast x
   | Paren x -> eval_ast x
-  | e -> raise_with_loc msgs ast ("[shouldnt happen] this expression cannot be expanded: " ^ string_of_ast e ^"\n")
-  in expanded
+  | e -> try eval_ast_formula msgs env e
+        with Fatal _ -> raise_with_loc msgs ast ("[shouldnt happen] this expression cannot be expanded: " ^ string_of_ast e ^"\n") (* ToDo: catch the exception message *)
 
 and eval_set_decl (msgs:Msgs.t ref) (env:env) (set_decl:ast) =
   let sets = (match ast_whithout_loc set_decl with Set_decl sets -> sets | _ -> failwith "shoulnt happen: non-Set_decl in eval_set_decl") in
@@ -372,6 +376,37 @@ and eval_set_decl (msgs:Msgs.t ref) (env:env) (set_decl:ast) =
   | [],x::_ | x::_,[] -> failwith "shouldn't happen: len(sets)!=len(sets_expanded)"
 
 
+and eval_formula_set_decl (msgs:Msgs.t ref) (env:env) (set_decl:ast) =
+  let sets =
+    match ast_whithout_loc set_decl with
+    | Set_decl sets -> sets
+    | _ -> failwith "[shouln't happen] non-Set_decl in eval_formula_set_decl"
+  in
+  let element_expansion element =
+    match ast_whithout_loc element with
+      | Set_decl s -> eval_formula_set_decl msgs env (Set_decl s)
+      | f -> Formula (eval_ast_formula msgs env f)
+  in
+  let sets_expanded = List.map element_expansion sets in
+  let check_elements_type_similarity first_elmt elmt elmt_expanded = match first_elmt, elmt_expanded with
+    | Set _  , Set x   -> Set x
+    | Formula _, Formula x -> Formula x
+    | _ -> raise_set_decl msgs set_decl elmt elmt_expanded
+             (Set_decl sets) (Set_decl sets_expanded)
+             ("at this point a comma-separated list of '"^string_of_ast_type first_elmt^"', \
+             because previous elements of the list had this type"^"\n")
+  in
+  match sets, sets_expanded with
+  | [],[] -> Set AstSet.empty
+  | x::_,first::_ -> begin
+      match first with 
+      | Formula _ | Set _ -> Set (AstSet.of_list (List.map2 (check_elements_type_similarity first) sets sets_expanded))
+      | _ -> raise_set_decl msgs set_decl x first
+                    (Set_decl sets) (Set_decl sets_expanded)
+                    "elements of type 'int', 'float', 'prop' or 'set'"
+    end
+  | [],x::_ | x::_,[] -> failwith "shouldn't happen: len(sets)!=len(sets_expanded)"
+
 (* [eval_ast_formula] evaluates formulas; nothing in formulas should be
    expanded, except for variables, bigand, bigor, let, exact, atleast,atmost. *)
 and eval_ast_formula (msgs:Msgs.t ref) (env:env) (ast:ast) : ast =
@@ -379,8 +414,10 @@ and eval_ast_formula (msgs:Msgs.t ref) (env:env) (ast:ast) : ast =
   and eval_ast_formula_env = eval_ast_formula msgs
   and eval_ast = eval_ast msgs env in
   match ast_whithout_loc ast with
-  | Int x   -> Int x
-  | Float x -> Float x
+  | Int x when not !smt -> failwith "Integer allowed only with SMT solver"
+  | Int x when !smt -> Int x 
+  | Float x when not !smt -> failwith "Float allowed only with SMT solver"
+  | Float x when !smt -> Float x
   | Neg x ->
     begin
       match eval_ast_formula x with
@@ -444,11 +481,8 @@ and eval_ast_formula (msgs:Msgs.t ref) (env:env) (ast:ast) : ast =
          (recursive-wise) in bigand, bigor or let.
          To be accepted, this variable must contain a proposition. *)
       try let content,loc_affect = List.assoc name env in
-        match content with
-        | Prop x -> Prop x
-        | Int x when !smt -> Int x
-        | Float x when !smt -> Float x
-        | _ -> raise_with_loc msgs ast
+        try eval_ast_formula content 
+        with Fatal _ -> raise_with_loc msgs ast (* ToDo: catch the exception message *)
             ("local variable '" ^ name ^ "' (defined in bigand, bigor or let) "^
             "cannot be expanded into a 'prop' because its content "^
             "is of type '"^(string_of_ast_type content)^"' instead of "^
@@ -461,11 +495,8 @@ and eval_ast_formula (msgs:Msgs.t ref) (env:env) (ast:ast) : ast =
          in the 'data' section. To be accepted, this variable must contain
          a proposition. *)
       try let content,loc_affect = Hashtbl.find !extenv name in
-        match content with
-        | Prop x -> Prop x
-        | Int x when !smt -> Int x
-        | Float x when !smt -> Float x
-        | _ -> raise_with_loc msgs ast
+        try eval_ast_formula content 
+        with Fatal _ -> raise_with_loc msgs ast (* ToDo: catch the exception message *)
             ("global variable '" ^ name ^ "' cannot be expanded into a 'prop' "^
             "because its content is of type '"^(string_of_ast_type content)^"' instead of "^
                (if !smt then "'prop', 'int' or 'float'" else "'prop'") ^ ". "^
@@ -628,6 +659,7 @@ and eval_ast_formula (msgs:Msgs.t ref) (env:env) (ast:ast) : ast =
     | _,content' -> raise_type_error msgs ast content content' " 'prop-set'"
   end
   | NewlineBefore f | NewlineAfter f -> eval_ast_formula f
+  | Formula f -> eval_ast_formula f
   | e -> raise_with_loc msgs ast ("this expression is not a formula: " ^ string_of_ast e ^"\n")
 
 and exact_str lst =

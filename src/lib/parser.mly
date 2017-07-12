@@ -30,7 +30,7 @@
 %token EMPTY CARD
 %token LBRACK RBRACK
 %token LPAREN RPAREN
-%token COMMA COLON AFFECT
+%token COMMA COLON AFFECT AFFECT_FORMULA
 %token IF THEN ELSE END
 %token EXACT ATLEAST ATMOST
 %token TOP BOTTOM
@@ -143,6 +143,7 @@ comma_list(T):
    in this 'top' list ('top' because it is at the top of the ast tree). *)
 affect_or(T):
   | a=global_affect {a}  %prec affect_before_exprsmt
+  | f=global_affect_formula {f}
   | f=T option(DATA) {f} (* DATA is now useless but stays for compatibilty *)
 
 (* [touist_simple] is the entry point of the parser in sat mode *)
@@ -180,6 +181,7 @@ var:
   tuple_variable, i.e. with prefix+indices: '$i(1,a,d)'.
   The indices can be either expression or term *)
 %inline global_affect: v=var AFFECT e=expr {Loc (Affect (v,e),($startpos,$endpos))}
+%inline global_affect_formula: v=var AFFECT_FORMULA e=expr {Loc (Affect (v,Formula e),($startpos,$endpos))}
 
 %inline if_statement(T): IF cond=expr THEN v1=T ELSE v2=T END {Loc (If (cond,v1,v2),($startpos,$endpos))}
 
@@ -219,6 +221,7 @@ expr:
   | EMPTY  (*LPAREN*) s=expr RPAREN {Loc (Empty s,($startpos,$endpos))}
   | SUBSET (*LPAREN*) s1=expr   COMMA s2=expr   RPAREN {Loc (Subset (s1,s2),($startpos,$endpos))}
   | p=prop {p}
+  | f=formula_simple {Formula f}
   | x=expr   IN s=expr {Loc (In (x,s),($startpos,$endpos))}
   | x=set_decl_range(expr)
   | x=set_empty
