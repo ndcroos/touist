@@ -56,7 +56,16 @@ fi
 
 # Build the actual TouIST.exe
 cd support/gui
-./gradlew createExeZip
-artifacts=$(find build/distributions -name "TouIST*" | head -1)
-echo $artifacts
+TERM=dumb ./gradlew createExeZip
+ARCH=windows-x86
+temp=$(find build/distributions -name "TouIST*" | head -1)
+zip=$(echo $temp | sed "s/\(.*\)\.zip$/\1-${ARCH}.zip/")
+mv $temp $zip
+echo $zip
 cd ../..
+
+
+git status
+if ! git status 2> /dev/null | tail -n1 | grep "nothing.*clean"; then
+    echo "Error, git says the repo is dirty!" >&2; exit 1
+fi

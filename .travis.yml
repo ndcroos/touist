@@ -51,9 +51,9 @@ before_install:
       osx) file=yices-2.4.2-x86_64-apple-darwin15.2.0-static-gmp.tar.gz ;;
       linux) file=yices-2.4.2-x86_64-unknown-linux-gnu-static-gmp.tar.gz ;;
     esac
-  - curl -o yices.tar.gz "http://yices.csl.sri.com/cgi-bin/yices2-newnewdownload.cgi?file=${file}&accept=I+Agree"
-  - tar xzf yices.tar.gz
-  - cp yices-*/bin/yices-smt2 support/gui/external
+  - curl -o $HOME/yices.tar.gz "http://yices.csl.sri.com/cgi-bin/yices2-newnewdownload.cgi?file=${file}&accept=I+Agree"
+  - tar xzf $HOME/yices.tar.gz -C $HOME
+  - cp $HOME/yices-*/bin/yices-smt2 support/gui/external
 install:
   # Build touist
   - cd $TRAVIS_BUILD_DIR
@@ -68,19 +68,25 @@ install:
     set -e # exit if one of the following commands fail
     case $TRAVIS_OS_NAME in
     linux)
-      ./gradlew distZip
-      zip=$(find build/distributions -name "TouIST*" | head -1)
-      linuxzip=$(echo $zip | sed 's/\(.*\)\.zip$/\1-linux.zip/')
-      mv $zip $linuxzip
-      zip=$linuxzip
+      TERM=dumb ./gradlew distZip
+      ARCH=linux-x86_64
       ;;
     osx)
-      ./gradlew createAppZip
-      zip=$(find build/distributions -name "TouIST*" | head -1)
+      TERM=dumb ./gradlew createAppZip
+      ARCH=mac-x86_64
       ;;
     esac
-    echo $zip
-    cd $TRAVIS_BUILD_DIR
+  - |
+    temp=$(find build/distributions -name "TouIST*" | head -1)
+    zip=$(echo $temp | sed "s/\(.*\)\.zip$/\1-${ARCH}.zip/")
+    mv $temp $zip
+  - ls -l $zip
+  - cd $TRAVIS_BUILD_DIR
+  - |
+    git status
+    if ! git status 2> /dev/null | tail -n1 | grep "nothing.*clean"; then
+      echo "Error, git says the repo is dirty!" >&2; exit 1
+    fi
 
 # This part is meant for unit tests (among others).
 script:
