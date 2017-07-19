@@ -303,6 +303,15 @@ run_test_tt_main (
   ]
 ];
 
+"formula-vars tests">:::[
+  "$x:=a and b expansion">:: (sat_expands_to "$x:=a and b     $x" "(a and b)");
+  "$F:=[a or b, a or not b] expansion">:: (sat_expands_to "$F:=[a or b, a or not b]     bigand $f in $F: $f end"
+  "((a or b) and (a or not b))");
+  "$F:=[[a or b, a and not b],[a and c]] expansion">:: (sat_expands_to "$F:=[[a or b, a and not b],[a and c]]
+  bigand $f in $F: bigor $i in $f: $i end end"
+  "((a and c) and ((a or b) or (a and not b)))");
+];
+
 ])
 
 ;;
