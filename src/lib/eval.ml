@@ -151,7 +151,12 @@ and eval_touist_code msgs (env:env) ast :ast =
     | [] -> []
     | Loc (Affect (Loc (Var (p,i),var_loc),content),affect_loc)::xs ->
       begin match content with
-        | Formula f -> Hashtbl.replace !extenv (expand_var_name msgs env (p,i)) (eval_formula_set_decl msgs env f, var_loc);
+        | Formula f -> Hashtbl.replace !extenv (expand_var_name msgs env (p,i)) (
+          begin match ast_whithout_loc f with
+            | Set_decl _ -> eval_formula_set_decl msgs env f
+            | _ -> eval_ast_formula msgs env f
+          end
+          , var_loc);
           affect_vars xs
         | _ -> Hashtbl.replace !extenv (expand_var_name msgs env (p,i)) (eval_ast msgs env content, var_loc);
           affect_vars xs
